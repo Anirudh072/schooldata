@@ -92,21 +92,63 @@ input:focus,select:focus,textarea:focus{outline:2px solid #9dbdff;border-color:#
 </main>
 <script src="schools-data.js"></script>
 <script>
-const DATA = (window.SCHOOL_GRANTS_DATA||[]).map(x=>({...x,udise:String(x.udise||"").replace(/\\.0$/,"")}));
+const DATA = (window.SCHOOL_GRANTS_DATA||[]).map(x=>({...x,udise:String(x.udise||"").replace(/\.0$/,"")}));
 let selected=null, active=1;
 const $=id=>document.getElementById(id);
 const money=n=>"₹"+Number(n||0).toLocaleString("en-IN",{maximumFractionDigits:0});
 function todayISO(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
 function uniq(a){return [...new Set(a.filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b)))}
 function fillSelect(el,values,label){const old=el.value;el.innerHTML="";el.add(new Option(label,""));values.forEach(v=>el.add(new Option(v,v)));if(values.includes(old))el.value=old}
-function currentFiltered(){const gt=$("grantType").value,dist=$("district").value,man=$("mandal").value,ddo=$("ddoCode").value.trim().toLowerCase(),ud=$("udiseSearch").value.trim().toLowerCase(),sn=$("schoolSearch").value.trim().toLowerCase();return DATA.filter(x=>(!gt||x.grant===gt)&&(!dist||x.district===dist)&&(!man||x.mandal===man)&&(!ddo||String(x.ddoCode||"").toLowerCase().includes(ddo))&&(!ud||x.udise.toLowerCase().includes(ud))&&(!sn||x.school.toLowerCase().includes(sn)));}
-function updateFilters(changed){if(changed==="grantType"||changed==="district"){fillSelect($("mandal"),uniq(DATA.filter(x=>(!$("grantType").value||x.grant===$("grantType").value)&&(!$("district").value||x.district===$("district").value)).map(x=>x.mandal)),"All mandals")}fillSelect($("school"),currentFiltered().map(x=>`${x.udise} — ${x.school} [${x.grant}]`),"Choose a school");$("school").selectedIndex=0;$("status").textContent=`${currentFiltered().length.toLocaleString()} matching school-grant records`;if(changed!=="init")selected=null;render()}
+function currentFiltered(){
+  const gt=$("grantType").value,
+        dist=$("district").value,
+        man=$("mandal").value,
+        ddo=$("ddoCode").value.trim().toLowerCase(),
+        ud=$("udiseSearch").value.trim().toLowerCase(),
+        sn=$("schoolSearch").value.trim().toLowerCase();
+
+  return DATA.filter(x =>
+    (!gt || x.grant===gt) &&
+    (!dist || x.district===dist) &&
+    (!man || x.mandal===man) &&
+    (!ddo || String(x.ddoCode||"").toLowerCase().includes(ddo)) &&
+    (!ud || String(x.udise||"").toLowerCase().includes(ud)) &&
+    (!sn || String(x.school||"").toLowerCase().includes(sn))
+  );
+}
+function updateFilters(changed){
+  if(changed==="grantType"||changed==="district"){
+    fillSelect($("mandal"),uniq(DATA.filter(x=>
+      (!$("grantType").value||x.grant===$("grantType").value) &&
+      (!$("district").value||x.district===$("district").value)
+    ).map(x=>x.mandal)),"All mandals");
+  }
+
+  const matches=currentFiltered();
+  fillSelect($("school"),matches.map(x=>`${x.udise} — ${x.school} [${x.grant}]`),"Choose a school");
+  $("school").selectedIndex=0;
+  selected=null;
+
+  // When a full UDISE code is entered, automatically select it if it
+  // identifies exactly one school-grant record.
+  const query=$("udiseSearch").value.trim().toLowerCase();
+  if(changed==="udiseSearch" && query){
+    const exact=matches.filter(x=>String(x.udise||"").trim().toLowerCase()===query);
+    if(exact.length===1){
+      $("school").value=`${exact[0].udise} — ${exact[0].school} [${exact[0].grant}]`;
+      selectSchool();
+      return;
+    }
+  }
+
+  render();
+}
 function chosenFromOption(){const val=$("school").value;return DATA.find(x=>`${x.udise} — ${x.school} [${x.grant}]`===val)||null}
 function selectSchool(){selected=chosenFromOption();if(!selected){render();return}if(selected.ddoCode)$("ddoCodeEdit").value=selected.ddoCode;if(selected.ddoName)$("ddoName").value=selected.ddoName;if(selected.ddoDesignation)$("ddoDesignation").value=selected.ddoDesignation;if(selected.reference)$("references").value=selected.reference;render()}
 function val(id){return $(id)?.value||""}
 function field(k){if(!selected)return "";const map={date:val("proceedingsDate"),grant:selected.grant,district:selected.district,mandal:selected.mandal,udise:selected.udise,school:selected.school,amount:money(selected.amount),gen:money(selected.gen),sc:money(selected.sc),st:money(selected.st),ddoName:val("ddoName"),ddoDesignation:val("ddoDesignation"),ddoCode:val("ddoCodeEdit"),complexName:val("complexName"),references:val("references"),vendorGen:val("vendorGen"),accGen:val("accGen"),ifscGen:val("ifscGen"),vendorSc:val("vendorSc"),accSc:val("accSc"),ifscSc:val("ifscSc"),vendorSt:val("vendorSt"),accSt:val("accSt"),ifscSt:val("ifscSt"),words:words(Number(selected.amount||0))};return map[k]??""}
 function words(n){if(!n)return "Zero rupees only";let a=["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"],b=["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];function two(x){return x<20?a[x]:b[Math.floor(x/10)]+(x%10?" "+a[x%10]:"")}function three(x){return (x>=100?a[Math.floor(x/100)]+" Hundred "+(x%100?two(x%100):""):two(x)).trim()}let out=[];for(const [v,label] of [[10000000,"Crore"],[100000,"Lakh"],[1000,"Thousand"],[1,""]]){let q=Math.floor(n/v);if(q){out.push(three(q)+" "+label);n%=v}}return out.join(" ").trim()+" rupees only"}
-function render(){document.querySelectorAll("[data-field]").forEach(el=>{const k=el.dataset.field;el.textContent=field(k)||((k==="complexName")?"School Complex":"");});$("sumSchool").textContent=selected?selected.school:"—";$("sumTotal").textContent=selected?money(selected.amount):"₹0";$("sumGen").textContent=selected?money(selected.gen):"₹0";$("sumScSt").textContent=selected?`${money(selected.sc)} / ${money(selected.st)}`:"₹0 / ₹0";$("status").textContent=`${DATA.length.toLocaleString()} school-grant records loaded${selected?" • School selected":""}`}
+function render(){document.querySelectorAll("[data-field]").forEach(el=>{const k=el.dataset.field;el.textContent=field(k)||((k==="complexName")?"School Complex":"");});$("sumSchool").textContent=selected?selected.school:"—";$("sumTotal").textContent=selected?money(selected.amount):"₹0";$("sumGen").textContent=selected?money(selected.gen):"₹0";$("sumScSt").textContent=selected?`${money(selected.sc)} / ${money(selected.st)}`:"₹0 / ₹0";const count=currentFiltered().length;$("status").textContent=`${DATA.length.toLocaleString()} records loaded • ${count.toLocaleString()} matching records${selected?" • School selected":""}`}
 function activate(n){active=n;document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",Number(t.dataset.report)===n));document.querySelectorAll(".report").forEach(r=>r.classList.toggle("hidden",r.id!==`report${n}`));document.querySelectorAll(".report").forEach(r=>r.classList.toggle("print-current",r.id===`report${n}`))}
 function printActive(){if(!selected){alert("Please select a school first.");return}activate(active);window.print()}
 function resetAll(){if(!confirm("Reset school selection and editable fields?"))return;$("grantType").value="";$("district").value="";$("mandal").value="";$("ddoCode").value="";$("udiseSearch").value="";$("schoolSearch").value="";$("proceedingsDate").value=todayISO();["ddoName","ddoCodeEdit","complexName","vendorGen","accGen","ifscGen","vendorSc","accSc","ifscSc","vendorSt","accSt","ifscSt"].forEach(id=>$(id).value="");$("ddoDesignation").value="DDO / School Complex HM";$("references").value="";fillSelect($("district"),uniq(DATA.map(x=>x.district)),"All districts");fillSelect($("mandal"),[],"All mandals");fillSelect($("school"),[],"Choose a school");selected=null;activate(1);render()}
